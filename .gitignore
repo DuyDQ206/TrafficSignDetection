@@ -1,3 +1,14 @@
+# Virtual Environment
+.venv/
+venv/
+
+# Data & Model Weights (Tránh push hàng trăm MB/GB lên GitHub)
 data/
-.venv
-.env
+model/*.pt
+model/*.pth
+model/*.onnx
+model/*.engine
+
+# Python Cache & Checkpoints
+__pycache__/
+.ipynb_checkpoints/

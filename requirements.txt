@@ -1,1 +1,19 @@
+# Web framework & server
+fastapi>=0.110.0
+uvicorn[standard]>=0.28.0
+python-multipart>=0.0.9
 
+# Data validation & settings (Pydantic v2)
+pydantic>=2.6.0
+pydantic-settings>=2.2.0
+
+# Computer vision & computer science tools
+opencv-python>=4.9.0.80
+numpy>=1.26.0
+Pillow>=10.2.0
+
+# AI / ML Inference
+ultralytics>=8.1.0
+torch>=2.2.0
+torchvision>=0.17.0
+onnxruntime>=1.17.0
