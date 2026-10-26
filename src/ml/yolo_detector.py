@@ -4,24 +4,27 @@ import numpy as np
 
 
 class YOLODetector:
-    def __init__(self, model_path: str):
-        path = Path(model_path)
+    def __init__(self, openvino_path: str, pt_path: str):
+        ov_path = Path(openvino_path)
+        pt = Path(pt_path)
 
-        if not path.exists():
-            raise FileNotFoundError(f"Model not found: {path.resolve()}")
+        if ov_path.exists():
+            # Ưu tiên OpenVINO — nhanh hơn trên CPU, không cần GPU
+            self.model = YOLO(str(ov_path), task="detect")
+            self.backend = "openvino"
+        elif pt.exists():
+            # Fallback sang PyTorch .pt
+            self.model = YOLO(str(pt))
+            self.backend = "pytorch"
+        else:
+            raise FileNotFoundError(
+                f"Không tìm thấy model tại:\n  OpenVINO: {ov_path}\n  PyTorch : {pt}"
+            )
 
-        # Load model once when the detector is initialized
-        self.model = YOLO(str(path))
-
-    def predict(self, image: np.ndarray, conf: float = 0.25):
-        results = self.model.predict(
-            source=image,
-            conf=conf,
-            verbose=False
-        )
+    def predict(self, image: np.ndarray, conf: float = 0.25) -> list[dict]:
+        results = self.model.predict(source=image, conf=conf, verbose=False)
 
         detections = []
-
         for result in results:
             for box in result.boxes:
                 class_id = int(box.cls[0].item())
@@ -36,8 +39,7 @@ class YOLODetector:
                         "x1": round(x1, 2),
                         "y1": round(y1, 2),
                         "x2": round(x2, 2),
-                        "y2": round(y2, 2)
-                    }
+                        "y2": round(y2, 2),
+                    },
                 })
-
         return detections

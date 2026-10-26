@@ -1,26 +1,22 @@
 from fastapi import FastAPI
-from src.backend.api.v1 import detection, health
+from fastapi.middleware.cors import CORSMiddleware
+from src.backend.api.router import api_router
+from src.backend.config import API_PREFIX
 
 app = FastAPI(
     title="Traffic Sign Detection API",
-    description="API for traffic sign detection using deep learning models.",
-    version="1.0.0"
+    description="Nhận diện biển báo giao thông bằng YOLOv11 + OpenVINO",
+    version="1.0.0",
 )
 
-app.include_router(
-    health.router,
-    prefix="/api/v1"
+# CORS — cho phép frontend / Postman gọi API
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
-app.include_router(
-    detection.router,
-    prefix="/api/v1"
-)
-
-
-@app.get("/")
-def root():
-    return {
-        "message": "Welcome to Traffic Sign Detection API",
-        "docs": "/docs"
-    }
+# Đăng ký tất cả routes
+app.include_router(api_router, prefix=API_PREFIX)

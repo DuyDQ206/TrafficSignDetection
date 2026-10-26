@@ -1,0 +1,828 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Traffic Sign Detection</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:        #0f1117;
+      --surface:   #1a1d27;
+      --border:    #2a2d3a;
+      --accent:    #4f8ef7;
+      --accent-2:  #34d399;
+      --danger:    #f87171;
+      --text:      #e2e8f0;
+      --muted:     #64748b;
+      --radius:    12px;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      min-height: 100dvh;
+      display: grid;
+      grid-template-rows: auto 1fr auto;
+    }
+
+    /* ── Header ── */
+    header {
+      padding: 16px 24px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      background: var(--surface);
+    }
+    header h1 { font-size: 1.1rem; font-weight: 600; }
+    .badge {
+      font-size: 0.7rem;
+      padding: 2px 8px;
+      border-radius: 99px;
+      background: color-mix(in srgb, var(--accent) 15%, transparent);
+      color: var(--accent);
+      border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
+    }
+
+    /* ── Main layout ── */
+    main {
+      display: grid;
+      grid-template-columns: 1fr 320px;
+      gap: 0;
+      overflow: hidden;
+    }
+
+    /* ── Video panel ── */
+    .video-panel {
+      position: relative;
+      background: #000;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+    }
+
+    .video-wrapper {
+      position: relative;
+      width: 100%;
+      height: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    #videoEl {
+      max-width: 100%;
+      max-height: 100%;
+      display: block;
+    }
+
+    #overlayCanvas {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      pointer-events: none;
+    }
+
+    /* Drop zone */
+    .drop-zone {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      border: 2px dashed var(--border);
+      cursor: pointer;
+      transition: border-color 0.2s, background 0.2s;
+    }
+    .drop-zone:hover,
+    .drop-zone.drag-over {
+      border-color: var(--accent);
+      background: color-mix(in srgb, var(--accent) 5%, transparent);
+    }
+    .drop-zone svg { opacity: 0.3; }
+    .drop-zone p { color: var(--muted); font-size: 0.9rem; }
+    .drop-zone strong { color: var(--text); }
+    .drop-zone.hidden { display: none; }
+
+    /* Spinner */
+    .spinner-wrap {
+      position: absolute;
+      inset: 0;
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 16px;
+      background: color-mix(in srgb, #000 70%, transparent);
+      z-index: 10;
+    }
+    .spinner-wrap.visible { display: flex; }
+    .spinner {
+      width: 48px; height: 48px;
+      border: 4px solid var(--border);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .spinner-label { color: var(--muted); font-size: 0.85rem; }
+    #progressText { color: var(--text); font-size: 1rem; font-weight: 600; }
+
+    /* Controls bar */
+    .controls {
+      position: absolute;
+      bottom: 0;
+      left: 0; right: 0;
+      padding: 12px 16px;
+      background: linear-gradient(transparent, rgba(0,0,0,0.8));
+      display: none;
+      align-items: center;
+      gap: 12px;
+    }
+    .controls.visible { display: flex; }
+
+    .ctrl-btn {
+      background: none;
+      border: none;
+      color: var(--text);
+      cursor: pointer;
+      padding: 6px;
+      border-radius: 6px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: background 0.15s;
+    }
+    .ctrl-btn:hover { background: rgba(255,255,255,0.1); }
+
+    #seekBar {
+      flex: 1;
+      accent-color: var(--accent);
+      cursor: pointer;
+    }
+
+    #timeLabel { font-size: 0.8rem; color: var(--muted); min-width: 80px; }
+
+    /* ── Sidebar ── */
+    .sidebar {
+      background: var(--surface);
+      border-left: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    .sidebar-section {
+      padding: 16px;
+      border-bottom: 1px solid var(--border);
+    }
+    .sidebar-section h2 {
+      font-size: 0.75rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--muted);
+      margin-bottom: 12px;
+    }
+
+    /* Upload button */
+    #uploadBtn {
+      width: 100%;
+      padding: 10px;
+      border-radius: var(--radius);
+      border: 1px solid var(--border);
+      background: var(--bg);
+      color: var(--text);
+      cursor: pointer;
+      font-size: 0.85rem;
+      transition: border-color 0.2s, background 0.2s;
+    }
+    #uploadBtn:hover { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 8%, var(--bg)); }
+
+    /* Conf slider */
+    .conf-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .conf-row label { font-size: 0.85rem; color: var(--muted); flex: 1; }
+    .conf-row span { font-size: 0.85rem; font-weight: 600; min-width: 32px; text-align: right; }
+    #confSlider { width: 100%; accent-color: var(--accent); margin-top: 6px; }
+
+    #detectBtn {
+      width: 100%;
+      margin-top: 12px;
+      padding: 10px;
+      border-radius: var(--radius);
+      border: none;
+      background: var(--accent);
+      color: #fff;
+      font-weight: 600;
+      font-size: 0.9rem;
+      cursor: pointer;
+      transition: opacity 0.2s;
+    }
+    #detectBtn:disabled { opacity: 0.4; cursor: not-allowed; }
+    #detectBtn:not(:disabled):hover { opacity: 0.85; }
+
+    /* Stats */
+    .stats-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+    .stat-card {
+      background: var(--bg);
+      border-radius: 8px;
+      padding: 10px 12px;
+    }
+    .stat-card .val { font-size: 1.1rem; font-weight: 700; color: var(--accent-2); }
+    .stat-card .lbl { font-size: 0.72rem; color: var(--muted); margin-top: 2px; }
+
+    /* Detection list */
+    .det-list {
+      flex: 1;
+      overflow-y: auto;
+      padding: 12px 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .det-list h2 {
+      font-size: 0.75rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--muted);
+      margin-bottom: 8px;
+    }
+
+    .det-item {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 8px 10px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 0.82rem;
+      transition: border-color 0.15s;
+    }
+    .det-item.highlight {
+      border-color: var(--accent);
+      background: color-mix(in srgb, var(--accent) 8%, var(--bg));
+    }
+    .det-dot {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+    .det-name { flex: 1; font-weight: 500; }
+    .det-conf { color: var(--muted); }
+    .det-time { color: var(--muted); font-size: 0.75rem; }
+
+    .empty-state {
+      text-align: center;
+      color: var(--muted);
+      font-size: 0.85rem;
+      padding: 32px 0;
+    }
+
+    /* ── Footer ── */
+    footer {
+      padding: 8px 24px;
+      border-top: 1px solid var(--border);
+      background: var(--surface);
+      font-size: 0.75rem;
+      color: var(--muted);
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+    #statusDot {
+      width: 7px; height: 7px;
+      border-radius: 50%;
+      background: var(--muted);
+      flex-shrink: 0;
+    }
+    #statusDot.ok { background: var(--accent-2); }
+    #statusDot.err { background: var(--danger); }
+    #statusText { flex: 1; }
+
+    /* Error toast */
+    #errorToast {
+      position: fixed;
+      bottom: 60px; left: 50%;
+      transform: translateX(-50%) translateY(20px);
+      background: color-mix(in srgb, var(--danger) 15%, var(--surface));
+      border: 1px solid var(--danger);
+      color: var(--danger);
+      padding: 10px 20px;
+      border-radius: var(--radius);
+      font-size: 0.85rem;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.3s, transform 0.3s;
+      z-index: 100;
+      max-width: 400px;
+      text-align: center;
+    }
+    #errorToast.show {
+      opacity: 1;
+      transform: translateX(-50%) translateY(0);
+    }
+
+    @media (max-width: 700px) {
+      main { grid-template-columns: 1fr; grid-template-rows: 1fr auto; }
+      .sidebar { border-left: none; border-top: 1px solid var(--border); max-height: 50dvh; }
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <svg width="22" height="22" fill="none" viewBox="0 0 24 24">
+    <path fill="var(--accent)" d="M12 2L2 7v10l10 5 10-5V7L12 2z"/>
+    <circle cx="12" cy="12" r="3" fill="#fff"/>
+  </svg>
+  <h1>Traffic Sign Detection</h1>
+  <span class="badge">YOLOv11 · OpenVINO</span>
+</header>
+
+<main>
+  <!-- ── Video panel ── -->
+  <div class="video-panel">
+    <div class="video-wrapper">
+      <video id="videoEl" preload="metadata"></video>
+      <canvas id="overlayCanvas"></canvas>
+    </div>
+
+    <!-- Drop zone -->
+    <div class="drop-zone" id="dropZone">
+      <svg width="52" height="52" fill="none" viewBox="0 0 24 24">
+        <path stroke="var(--text)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"
+          d="M15 10l-4 4-4-4m4 4V3M3 17v1a3 3 0 003 3h12a3 3 0 003-3v-1"/>
+      </svg>
+      <p><strong>Kéo thả video vào đây</strong></p>
+      <p>hoặc click để chọn file MP4 / AVI / MOV</p>
+    </div>
+
+    <!-- Spinner -->
+    <div class="spinner-wrap" id="spinnerWrap">
+      <div class="spinner"></div>
+      <div id="progressText">Đang phân tích...</div>
+      <div class="spinner-label">Vui lòng chờ, không đóng tab này</div>
+    </div>
+
+    <!-- Controls -->
+    <div class="controls" id="controls">
+      <button class="ctrl-btn" id="playBtn" title="Play/Pause">
+        <svg id="playIcon" width="20" height="20" fill="currentColor" viewBox="0 0 24 24">
+          <path d="M8 5v14l11-7z"/>
+        </svg>
+      </button>
+      <input type="range" id="seekBar" min="0" max="100" value="0" step="0.1" />
+      <span id="timeLabel">0:00 / 0:00</span>
+    </div>
+  </div>
+
+  <!-- ── Sidebar ── -->
+  <aside class="sidebar">
+    <div class="sidebar-section">
+      <h2>Video & Cài đặt</h2>
+      <button id="uploadBtn">📁 Chọn video khác</button>
+      <input type="file" id="fileInput" accept="video/*" hidden />
+
+      <div style="margin-top:12px">
+        <div class="conf-row">
+          <label>Confidence</label>
+          <span id="confVal">0.25</span>
+        </div>
+        <input type="range" id="confSlider" min="0.05" max="0.95" step="0.05" value="0.25" />
+      </div>
+
+      <div style="margin-top:8px; font-size:0.75rem; color:var(--muted)">
+        Server: <input id="serverUrl" value="http://localhost:8000"
+          style="background:var(--bg);border:1px solid var(--border);color:var(--text);padding:3px 8px;border-radius:6px;font-size:0.78rem;width:100%;margin-top:4px" />
+      </div>
+
+      <button id="detectBtn" disabled>▶ Phân tích video</button>
+    </div>
+
+    <div class="sidebar-section" id="statsSection" style="display:none">
+      <h2>Kết quả</h2>
+      <div class="stats-grid">
+        <div class="stat-card">
+          <div class="val" id="statFrames">—</div>
+          <div class="lbl">Frames có detection</div>
+        </div>
+        <div class="stat-card">
+          <div class="val" id="statTotal">—</div>
+          <div class="lbl">Tổng detection</div>
+        </div>
+        <div class="stat-card">
+          <div class="val" id="statFps">—</div>
+          <div class="lbl">FPS video</div>
+        </div>
+        <div class="stat-card">
+          <div class="val" id="statDur">—</div>
+          <div class="lbl">Thời lượng</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="det-list" id="detList">
+      <h2>Biển báo nhận diện được</h2>
+      <div class="empty-state" id="emptyState">
+        Chưa có dữ liệu.<br/>Chọn video và bấm Phân tích.
+      </div>
+    </div>
+  </aside>
+</main>
+
+<footer>
+  <div id="statusDot"></div>
+  <span id="statusText">Chưa kết nối server</span>
+</footer>
+
+<div id="errorToast"></div>
+
+<script>
+// ── Palette for class colors ───────────────────────────────
+const PALETTE = [
+  '#4f8ef7','#34d399','#f59e0b','#f87171','#a78bfa',
+  '#38bdf8','#fb923c','#e879f9','#86efac','#fde68a',
+];
+const classColor = (id) => PALETTE[id % PALETTE.length];
+
+// ── State ─────────────────────────────────────────────────
+let videoFile = null;
+let detectionData = null;   // full API response
+let frameMap = new Map();   // timestamp_ms → objects[]
+let rafId = null;
+
+// ── DOM refs ──────────────────────────────────────────────
+const videoEl     = document.getElementById('videoEl');
+const canvas      = document.getElementById('overlayCanvas');
+const ctx         = canvas.getContext('2d');
+const dropZone    = document.getElementById('dropZone');
+const spinnerWrap = document.getElementById('spinnerWrap');
+const progressTxt = document.getElementById('progressText');
+const controls    = document.getElementById('controls');
+const playBtn     = document.getElementById('playBtn');
+const playIcon    = document.getElementById('playIcon');
+const seekBar     = document.getElementById('seekBar');
+const timeLabel   = document.getElementById('timeLabel');
+const detectBtn   = document.getElementById('detectBtn');
+const uploadBtn   = document.getElementById('uploadBtn');
+const fileInput   = document.getElementById('fileInput');
+const confSlider  = document.getElementById('confSlider');
+const confVal     = document.getElementById('confVal');
+const serverUrl   = document.getElementById('serverUrl');
+const statsSection= document.getElementById('statsSection');
+const detList     = document.getElementById('detList');
+const emptyState  = document.getElementById('emptyState');
+const statusDot   = document.getElementById('statusDot');
+const statusText  = document.getElementById('statusText');
+const errorToast  = document.getElementById('errorToast');
+
+// ── Helpers ───────────────────────────────────────────────
+function setStatus(msg, state = '') {
+  statusText.textContent = msg;
+  statusDot.className = state;
+}
+
+let toastTimer;
+function showError(msg) {
+  errorToast.textContent = msg;
+  errorToast.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => errorToast.classList.remove('show'), 4000);
+}
+
+function fmtTime(s) {
+  const m = Math.floor(s / 60);
+  const ss = String(Math.floor(s % 60)).padStart(2, '0');
+  return `${m}:${ss}`;
+}
+
+// ── File selection ─────────────────────────────────────────
+function loadVideoFile(file) {
+  if (!file || !file.type.startsWith('video/')) {
+    showError('Vui lòng chọn file video (MP4, AVI, MOV).');
+    return;
+  }
+  videoFile = file;
+  detectionData = null;
+  frameMap.clear();
+  clearCanvas();
+  renderDetList([]);
+
+  const url = URL.createObjectURL(file);
+  videoEl.src = url;
+  videoEl.load();
+
+  dropZone.classList.add('hidden');
+  controls.classList.add('visible');
+  statsSection.style.display = 'none';
+  detectBtn.disabled = false;
+  setStatus(`Đã chọn: ${file.name}`, '');
+}
+
+dropZone.addEventListener('click', () => fileInput.click());
+dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('drag-over'); });
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
+dropZone.addEventListener('drop', e => {
+  e.preventDefault();
+  dropZone.classList.remove('drag-over');
+  loadVideoFile(e.dataTransfer.files[0]);
+});
+uploadBtn.addEventListener('click', () => fileInput.click());
+fileInput.addEventListener('change', () => loadVideoFile(fileInput.files[0]));
+
+// ── Conf slider ────────────────────────────────────────────
+confSlider.addEventListener('input', () => {
+  confVal.textContent = parseFloat(confSlider.value).toFixed(2);
+});
+
+// ── Video events ───────────────────────────────────────────
+videoEl.addEventListener('loadedmetadata', () => {
+  syncCanvasSize();
+  seekBar.max = videoEl.duration;
+  timeLabel.textContent = `0:00 / ${fmtTime(videoEl.duration)}`;
+});
+
+videoEl.addEventListener('play', () => {
+  playIcon.innerHTML = '<path d="M6 19h4V5H6zm8-14v14h4V5z"/>';
+  startRaf();
+});
+videoEl.addEventListener('pause', () => {
+  playIcon.innerHTML = '<path d="M8 5v14l11-7z"/>';
+});
+videoEl.addEventListener('ended', () => {
+  playIcon.innerHTML = '<path d="M8 5v14l11-7z"/>';
+  cancelAnimationFrame(rafId);
+});
+videoEl.addEventListener('timeupdate', () => {
+  seekBar.value = videoEl.currentTime;
+  timeLabel.textContent = `${fmtTime(videoEl.currentTime)} / ${fmtTime(videoEl.duration)}`;
+});
+
+playBtn.addEventListener('click', () => {
+  videoEl.paused ? videoEl.play() : videoEl.pause();
+});
+seekBar.addEventListener('input', () => {
+  videoEl.currentTime = seekBar.value;
+  drawBoxesAt(videoEl.currentTime * 1000);
+});
+
+// ── Canvas sync ────────────────────────────────────────────
+function syncCanvasSize() {
+  // Match canvas pixel size to rendered video size
+  const rect = videoEl.getBoundingClientRect();
+  // Get actual rendered dimensions (letterbox-aware)
+  const vw = videoEl.videoWidth  || 640;
+  const vh = videoEl.videoHeight || 360;
+  const aspect = vw / vh;
+
+  let displayW = rect.width;
+  let displayH = rect.height;
+
+  if (displayW / displayH > aspect) {
+    displayW = displayH * aspect;
+  } else {
+    displayH = displayW / aspect;
+  }
+
+  canvas.width  = displayW;
+  canvas.height = displayH;
+  canvas.style.width  = displayW + 'px';
+  canvas.style.height = displayH + 'px';
+}
+
+window.addEventListener('resize', syncCanvasSize);
+
+function clearCanvas() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+}
+
+// ── Draw boxes ─────────────────────────────────────────────
+function drawBoxesAt(currentMs) {
+  clearCanvas();
+  if (!frameMap.size) return;
+
+  // Find closest frame within ±250ms
+  let best = null;
+  let bestDiff = Infinity;
+  for (const [ts] of frameMap) {
+    const diff = Math.abs(ts - currentMs);
+    if (diff < bestDiff) { bestDiff = diff; best = ts; }
+  }
+  if (best === null || bestDiff > 500) return;
+
+  const objects = frameMap.get(best);
+  const W = canvas.width;
+  const H = canvas.height;
+
+  for (const obj of objects) {
+    const b = obj.bbox_normalized;
+    const x = (b.x_center - b.width  / 2) * W;
+    const y = (b.y_center - b.height / 2) * H;
+    const w = b.width  * W;
+    const h = b.height * H;
+    const color = classColor(obj.class_id);
+
+    // Box
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 2;
+    ctx.strokeRect(x, y, w, h);
+
+    // Fill top bar for label
+    const label = `${obj.class_name} ${(obj.confidence * 100).toFixed(0)}%`;
+    ctx.font = 'bold 12px Segoe UI, sans-serif';
+    const textW = ctx.measureText(label).width;
+    const barH = 18;
+
+    ctx.fillStyle = color;
+    ctx.fillRect(x, y - barH, textW + 8, barH);
+
+    ctx.fillStyle = '#fff';
+    ctx.fillText(label, x + 4, y - 5);
+  }
+}
+
+// ── RAF loop ───────────────────────────────────────────────
+function startRaf() {
+  cancelAnimationFrame(rafId);
+  function loop() {
+    if (!videoEl.paused && !videoEl.ended) {
+      drawBoxesAt(videoEl.currentTime * 1000);
+      rafId = requestAnimationFrame(loop);
+    }
+  }
+  rafId = requestAnimationFrame(loop);
+}
+
+// ── Detection API call ─────────────────────────────────────
+detectBtn.addEventListener('click', async () => {
+  if (!videoFile) return;
+
+  const conf = parseFloat(confSlider.value);
+  const base = serverUrl.value.replace(/\/$/, '');
+
+  detectBtn.disabled = true;
+  spinnerWrap.classList.add('visible');
+  progressTxt.textContent = 'Đang upload & phân tích...';
+  setStatus('Đang gửi video lên server...', '');
+
+  const form = new FormData();
+  form.append('file', videoFile);
+
+  try {
+    // Upload progress (XHR cho progress bar)
+    const response = await new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open('POST', `${base}/api/v1/predict-video?conf=${conf}`);
+
+      xhr.upload.addEventListener('progress', (e) => {
+        if (e.lengthComputable) {
+          const pct = Math.round(e.loaded / e.total * 100);
+          progressTxt.textContent = `Upload: ${pct}%`;
+          setStatus(`Upload: ${pct}%`, '');
+        }
+      });
+
+      xhr.addEventListener('load', () => {
+        progressTxt.textContent = 'Đang inference...';
+        setStatus('Server đang xử lý...', '');
+        if (xhr.status >= 200 && xhr.status < 300) {
+          resolve(JSON.parse(xhr.responseText));
+        } else {
+          reject(new Error(`HTTP ${xhr.status}: ${xhr.responseText}`));
+        }
+      });
+      xhr.addEventListener('error', () => reject(new Error('Network error')));
+      xhr.send(form);
+    });
+
+    detectionData = response;
+
+    // Build frame map: timestamp_ms → objects[]
+    frameMap.clear();
+    for (const frame of response.detections) {
+      frameMap.set(frame.timestamp_ms, frame.objects);
+    }
+
+    // Stats
+    statsSection.style.display = 'block';
+    document.getElementById('statFrames').textContent = response.detections.length;
+    document.getElementById('statTotal').textContent  = response.detection_count;
+    document.getElementById('statFps').textContent    = response.video_info.fps.toFixed(1);
+    document.getElementById('statDur').textContent    = `${response.video_info.duration_seconds}s`;
+
+    // Detection list
+    buildDetList(response.detections);
+
+    // Draw first frame
+    syncCanvasSize();
+    drawBoxesAt(0);
+
+    setStatus(`Hoàn tất · ${response.detection_count} detections · backend: ${response.model_backend}`, 'ok');
+  } catch (err) {
+    showError(`Lỗi: ${err.message}`);
+    setStatus('Có lỗi xảy ra', 'err');
+  } finally {
+    spinnerWrap.classList.remove('visible');
+    detectBtn.disabled = false;
+  }
+});
+
+// ── Detection list ─────────────────────────────────────────
+function buildDetList(frames) {
+  // Collect unique signs with first occurrence time
+  const seen = new Map(); // class_name → {conf, time}
+  for (const frame of frames) {
+    for (const obj of frame.objects) {
+      if (!seen.has(obj.class_name) || seen.get(obj.class_name).conf < obj.confidence) {
+        seen.set(obj.class_name, {
+          class_id: obj.class_id,
+          conf: obj.confidence,
+          time: frame.timestamp_ms,
+        });
+      }
+    }
+  }
+
+  renderDetList([...seen.entries()].sort((a, b) => a[1].time - b[1].time));
+}
+
+function renderDetList(items) {
+  // Remove old items (keep h2 + emptyState)
+  const h2 = detList.querySelector('h2');
+  detList.innerHTML = '';
+  detList.appendChild(h2 || Object.assign(document.createElement('h2'), { textContent: 'Biển báo nhận diện được' }));
+
+  if (!items.length) {
+    detList.appendChild(emptyState);
+    emptyState.textContent = 'Chưa có dữ liệu.\nChọn video và bấm Phân tích.';
+    return;
+  }
+
+  for (const [name, info] of items) {
+    const item = document.createElement('div');
+    item.className = 'det-item';
+    item.dataset.time = info.time;
+    item.innerHTML = `
+      <div class="det-dot" style="background:${classColor(info.class_id)}"></div>
+      <span class="det-name">${name}</span>
+      <span class="det-conf">${(info.conf * 100).toFixed(0)}%</span>
+      <span class="det-time">${fmtTime(info.time / 1000)}</span>
+    `;
+    // Click to jump to that timestamp
+    item.addEventListener('click', () => {
+      videoEl.currentTime = info.time / 1000;
+      drawBoxesAt(info.time);
+      // Highlight
+      document.querySelectorAll('.det-item').forEach(el => el.classList.remove('highlight'));
+      item.classList.add('highlight');
+    });
+    detList.appendChild(item);
+  }
+}
+
+// Highlight list item based on current playback time
+videoEl.addEventListener('timeupdate', () => {
+  const ms = videoEl.currentTime * 1000;
+  document.querySelectorAll('.det-item').forEach(item => {
+    const t = parseFloat(item.dataset.time);
+    item.classList.toggle('highlight', Math.abs(t - ms) < 500);
+  });
+});
+
+// ── Health check on load ───────────────────────────────────
+async function healthCheck() {
+  try {
+    const base = serverUrl.value.replace(/\/$/, '');
+    const r = await fetch(`${base}/api/v1/health`, { signal: AbortSignal.timeout(3000) });
+    if (r.ok) {
+      setStatus('Server đang chạy ✓', 'ok');
+    } else {
+      setStatus(`Server lỗi (${r.status})`, 'err');
+    }
+  } catch {
+    setStatus('Không kết nối được server — hãy chạy uvicorn trước', 'err');
+  }
+}
+
+healthCheck();
+serverUrl.addEventListener('change', healthCheck);
+</script>
+</body>
+</html>
